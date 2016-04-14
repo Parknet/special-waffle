@@ -1,35 +1,30 @@
 require 'rest-client'
 require 'json'
 require 'csv'
+require 'thread'
 
+mutex = Mutex.new
 config = JSON.load(File.read("./config.json"))
 client_id = config['client_id']
 client_secret = config['client_secret']
-cidade = 'Pelotas'
+cidade = 'Sao Paulo'
 filtro = 'Estacionamento'
-
-
-#token = RestClient.post 'https://api.apontador.com.br/v2/oauth/token', {:Authorization => 'Bearer ' + bearer},{:params => {'client_id' => client_id, 'client_secret' => client_secret, 'grant_type' => 'client_credentials'}}
-token = RestClient.post 'https://api.apontador.com.br/v2/oauth/token', :client_id => client_id, :client_secret => client_secret, :grant_type => 'client_credentials'
-token = JSON.load(token)
-
-puts token["access_token"]
-
-places = RestClient.get 'https://api.apontador.com.br/v2/places/',  {:Authorization => 'Bearer ' + token["access_token"], :params => {'q'=> filtro, 'wt' => 'json', 'fq' => 'address.city:"'+ cidade +'"', 'rows' => 50}}
-places = JSON.load(places)
-
-start = 0
-total = places["results"]["header"]["found"].to_int
 
 file = CSV.open("./Porto Alegre.csv", "wb")
 file << ['Nome', 'País', 'Estado', 'Telefone', 'Cidade', 'Bairro', 'Número', 'CEP']
-while start < total do
-    places = RestClient.get 'https://api.apontador.com.br/v2/places/',  {:Authorization => 'Bearer ' + token["access_token"], :params => {'q'=> filtro, 'wt' => 'json', 'fq' => 'address.city:"'+ cidade +'"', 'rows' => 50, 'start' => start}}
+
+
+def crawler(start, token, client_id, client_secret, cidade, filtro, file, mutex)
+    places = RestClient.get 'https://api.apontador.com.br/v2/places/',  {:Authorization => 'Bearer ' + token["access_token"], :params => {'q'=> filtro, 'wt' => 'json', 'fq' => ('address.city:"' + cidade + '"'), 'rows' => 50, 'start' => start}}
     places = JSON.load(places)
-    
-    
+
+    begin
+        puts places["results"]["places"].size().to_s()
+    rescue
+        return
+    end
     start = start + 50
-    for place in places["results"]["places"]
+    for place in places["results"]["places"] do
         temp = Array.new
 
         temp << place["name"]
@@ -60,9 +55,35 @@ while start < total do
         rescue
             temp << nil 
         end
-        file << temp
+
+        mutex.synchronize do
+            file << temp
+        end
     end
 end
+    
 
+#token = RestClient.post 'https://api.apontador.com.br/v2/oauth/token', {:Authorization => 'Bearer ' + bearer},{:params => {'client_id' => client_id, 'client_secret' => client_secret, 'grant_type' => 'client_credentials'}}
+token = RestClient.post 'https://api.apontador.com.br/v2/oauth/token', :client_id => client_id, :client_secret => client_secret, :grant_type => 'client_credentials'
+token = JSON.load(token)
+
+puts token["access_token"]
+
+places = RestClient.get 'https://api.apontador.com.br/v2/places/',  {:Authorization => 'Bearer ' + token["access_token"], :params => {'q'=> filtro, 'wt' => 'json', 'fq' => 'address.city:"'+ cidade +'"', 'rows' => 10}}
+places = JSON.load(places)
+
+start = 0
+total = places["results"]["header"]["found"].to_int
+
+while start <= total do
+    Thread.new{crawler(start, token, client_id, client_secret, cidade, filtro, file, mutex)}
+    start = start + 50
+end
+
+for thread in Thread.list do
+    if !(thread == Thread.current)
+        thread.join
+    end
+end
 puts total.to_s + " resultados."
 puts "fim"
