@@ -1,20 +1,16 @@
 require 'rest-client'
+require 'json'
 require 'csv'
 
-client_id = ''
-client_secret = ''
-bearer = ''
-cidade = ''
-filtro = ''
-
-client_id = 'parknet-waffle'
-client_secret = 'aIXe5PoKmsFyO6z63j8huaETKtm~'
-bearer = 'af48a24d-245c-4851-96e4-54bb0859d81b'
-cidade = 'Porto Alegre'
-filtro = 'garagem'
+config = JSON.load(File.read("./config.json"))
+client_id = config['client_id']
+client_secret = config['client_secret']
+cidade = 'Pelotas'
+filtro = 'Estacionamento'
 
 
-token = RestClient.post 'https://api.apontador.com.br/v2/oauth/token', {:Authorization => 'Bearer ' + bearer},{:params => {'client_id' => client_id, 'client_secret' => client_secret, 'grant_type' => 'client_credentials'}}
+#token = RestClient.post 'https://api.apontador.com.br/v2/oauth/token', {:Authorization => 'Bearer ' + bearer},{:params => {'client_id' => client_id, 'client_secret' => client_secret, 'grant_type' => 'client_credentials'}}
+token = RestClient.post 'https://api.apontador.com.br/v2/oauth/token', :client_id => client_id, :client_secret => client_secret, :grant_type => 'client_credentials'
 token = JSON.load(token)
 
 puts token["access_token"]
@@ -26,7 +22,7 @@ start = 0
 total = places["results"]["header"]["found"].to_int
 
 file = CSV.open("./Porto Alegre.csv", "wb")
-file << ['Nome', 'Pais', 'Estado', 'Telefone', 'Cidade', 'Bairro', 'Numero', 'CEP']
+file << ['Nome', 'País', 'Estado', 'Telefone', 'Cidade', 'Bairro', 'Número', 'CEP']
 while start < total do
     places = RestClient.get 'https://api.apontador.com.br/v2/places/',  {:Authorization => 'Bearer ' + token["access_token"], :params => {'q'=> filtro, 'wt' => 'json', 'fq' => 'address.city:"'+ cidade +'"', 'rows' => 50, 'start' => start}}
     places = JSON.load(places)
@@ -36,53 +32,37 @@ while start < total do
     for place in places["results"]["places"]
         temp = Array.new
 
-        puts "Nome: " + place["name"]
         temp << place["name"]
-        puts "Pais: " + place["address"]["country"]
         temp << place["address"]["country"]
-        puts "Estado: " + place["address"]["state"]
         temp << place["address"]["state"]
         begin
-            for phone in  place["phones"]
-                puts "Telefone: " + phone
-            end
             temp << place["phones"].join(" - ")
         rescue
-            puts "Telefone: "
-            temp << ""
+            temp << nil
         end
         
-        puts "Cidade: " + place["address"]["city"]
         temp << place["address"]["city"]
         begin
-            puts "Bairro: " + place["address"]["district"]
             temp << place["address"]["district"]
         rescue
-            puts "Bairro: "
-            temp << ""
+            temp << nil
         end
         
-        puts "Rua: " + place["address"]["street"]
         temp << place["address"]["street"]
         begin
-            puts "Numero: " + place["address"]["number"]
             temp << place["address"]["number"]
         rescue
-            puts "Numero: "
-            temp << ""
+            temp << nil
         end
         
         begin
-            puts "CEP: " + place["address"]["zipcode"]
             temp << place["address"]["zipcode"]
         rescue
-            puts "CEP: "
-            temp << "" 
+            temp << nil 
         end
-        puts ""
         file << temp
     end
 end
 
-
+puts total.to_s + " resultados."
 puts "fim"
